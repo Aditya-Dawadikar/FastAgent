@@ -30,6 +30,4 @@ class AllRetriesExhausted(FastAgentError):
         self.node_name = node_name
         self.attempts = attempts
         self.last_error = last_error
-        super().__init__(
-            f"Node '{node_name}' failed after {attempts} attempt(s): {last_error}"
-        )
+        super().__init__(f"Node '{node_name}' failed after {attempts} attempt(s): {last_error}")

@@ -59,6 +59,7 @@ def test_max_iterations_no_context_does_not_raise():
     # Force the context to None, overriding the autouse fixture.
     token = _run_counters.set(None)
     try:
+
         @node(max_iterations=1)
         def fn(state):
             return {}

@@ -1,4 +1,5 @@
 """Helpers for integrating FastAgent context into LangGraph graph objects."""
+
 from __future__ import annotations
 
 from typing import Any

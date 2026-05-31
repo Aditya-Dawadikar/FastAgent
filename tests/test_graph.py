@@ -1,4 +1,5 @@
 """Tests for wrap_graph() — uses a lightweight mock instead of a real LangGraph graph."""
+
 import pytest
 
 from fastagent import node, wrap_graph
@@ -50,8 +51,8 @@ def test_wrap_graph_resets_iteration_counters_between_invocations():
     graph = _FakeGraph(invoke_fn=run)
     wrap_graph(graph)
 
-    graph.invoke({})   # first run — counter reaches 1
-    graph.invoke({})   # second run — counter should reset to 0, so this succeeds
+    graph.invoke({})  # first run — counter reaches 1
+    graph.invoke({})  # second run — counter should reset to 0, so this succeeds
 
 
 def test_wrap_graph_max_iterations_still_blocks_within_single_run():
@@ -111,8 +112,8 @@ async def test_wrap_graph_ainvoke_resets_counters_between_runs():
     graph = _FakeGraph(invoke_fn=lambda s, **kw: guarded(s))
     wrap_graph(graph)
 
-    await graph.ainvoke({})   # first run
-    await graph.ainvoke({})   # second — counter should be fresh
+    await graph.ainvoke({})  # first run
+    await graph.ainvoke({})  # second — counter should be fresh
 
 
 @pytest.mark.asyncio

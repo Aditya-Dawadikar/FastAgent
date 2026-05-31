@@ -1,4 +1,5 @@
 """The @node decorator — the primary public API for FastAgent."""
+
 from __future__ import annotations
 
 import functools

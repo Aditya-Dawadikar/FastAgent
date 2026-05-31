@@ -1,4 +1,5 @@
 """Integration-style tests for the @node decorator used without arguments."""
+
 from fastagent import node
 
 

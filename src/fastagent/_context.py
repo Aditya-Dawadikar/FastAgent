@@ -9,6 +9,7 @@ the run completes.
 When using LangGraph, wrap your graph with `fastagent.wrap_graph()` to have
 this managed automatically.
 """
+
 from __future__ import annotations
 
 import contextvars

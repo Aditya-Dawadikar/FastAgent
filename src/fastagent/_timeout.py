@@ -1,4 +1,5 @@
 """Cross-platform timeout implementation using a thread pool executor."""
+
 from __future__ import annotations
 
 import concurrent.futures
