@@ -1,0 +1,170 @@
+# Automated PyPI publishing pipeline.
+#
+# Triggered by pushing a semver tag (e.g. `git tag v0.1.0 && git push --tags`).
+#
+# Pipeline order (each stage gates the next):
+#   test → verify-version → build → publish-testpypi → publish-pypi → github-release
+#
+# One-time setup required:
+#   1. On PyPI (pypi.org)  → Account → Publishing → Add a new pending publisher
+#        owner: aditya-dawadikar  repo: FastAgent  workflow: publish.yml  env: pypi
+#   2. On TestPyPI (test.pypi.org) — same steps, env name: testpypi
+#   3. In GitHub repo Settings → Environments, create "pypi" and "testpypi".
+#      No secrets needed — OIDC trusted publishing handles auth automatically.
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"        # strict semver tags only: v1.2.3
+      - "v[0-9]+.[0-9]+.[0-9]+.post[0-9]+"  # post-releases: v1.2.3.post1
+      - "v[0-9]+.[0-9]+.[0-9]+rc[0-9]+"     # release candidates: v1.2.3rc1
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false             # never cancel an in-flight publish
+
+jobs:
+  # ── 1. Full test suite must pass on the exact tagged commit ────────────────
+  test:
+    name: Test (publish gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install with dev deps
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest
+
+  # ── 2. Git tag must match fastagent.__version__ ────────────────────────────
+  verify-version:
+    name: Verify version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check tag matches __version__
+        id: check
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from fastagent import __version__; print(__version__)")
+          echo "Tag   : $TAG"
+          echo "Code  : $VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version $VERSION in src/fastagent/__init__.py"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ── 3. Build sdist + wheel, validate with twine ───────────────────────────
+  build:
+    name: Build & validate
+    needs: [test, verify-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install hatch twine
+
+      - name: Build sdist and wheel
+        run: hatch build
+
+      - name: Validate distributions
+        run: twine check --strict dist/*
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ needs.verify-version.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── 4. Smoke-test on TestPyPI ──────────────────────────────────────────────
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/fastagent/
+    permissions:
+      id-token: write                   # required for OIDC trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.build.outputs.version || needs.verify-version.outputs.version }}
+          path: dist/
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://upload.test.pypi.org/legacy/
+          print-hash: true
+
+  # ── 5. Publish to production PyPI (only after TestPyPI succeeds) ──────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/fastagent/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+
+  # ── 6. Create GitHub Release (only after PyPI publish succeeds) ────────────
+  github-release:
+    name: Create GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

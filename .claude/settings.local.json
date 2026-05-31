@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(D:\\\\FastAgent\\\\.venv\\\\Scripts\\\\pip install -e \"D:\\\\FastAgent[dev]\" 2>&1)",
+      "PowerShell(D:\\\\FastAgent\\\\.venv\\\\Scripts\\\\pytest D:\\\\FastAgent\\\\tests -v 2>&1)",
+      "PowerShell(D:\\\\FastAgent\\\\.venv\\\\Scripts\\\\python D:\\\\FastAgent\\\\examples\\\\basic_agent.py 2>&1)"
+    ]
+  }
+}
