@@ -43,5 +43,8 @@ Thumbs.db
 # Hatch
 .hatch/
 
+# Claude Code
+.claude/settings.local.json
+
 # dev docs
 .local
