@@ -78,7 +78,8 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TCH", "ANN"]
-ignore = ["ANN101", "ANN102"]
+# ANN401: Any is justified in wrapper/adapter code that must accept arbitrary graph objects.
+ignore = ["ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ANN"]

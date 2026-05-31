@@ -1,4 +1,5 @@
 import pytest
+
 import fastagent
 from fastagent import node
 from fastagent.exceptions import MaxIterationsExceeded

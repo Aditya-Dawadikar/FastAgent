@@ -12,19 +12,18 @@ this managed automatically.
 from __future__ import annotations
 
 import contextvars
-from typing import Optional
 
-_run_counters: contextvars.ContextVar[Optional[dict[str, int]]] = contextvars.ContextVar(
+_run_counters: contextvars.ContextVar[dict[str, int] | None] = contextvars.ContextVar(
     "fastagent_run_counters", default=None
 )
 
 
-def new_run_context() -> contextvars.Token[Optional[dict[str, int]]]:
+def new_run_context() -> contextvars.Token[dict[str, int] | None]:
     """Start a new isolated execution context. Returns a token for cleanup."""
     return _run_counters.set({})
 
 
-def reset_run_context(token: contextvars.Token[Optional[dict[str, int]]]) -> None:
+def reset_run_context(token: contextvars.Token[dict[str, int] | None]) -> None:
     """Restore the previous context state using the token from new_run_context()."""
     _run_counters.reset(token)
 

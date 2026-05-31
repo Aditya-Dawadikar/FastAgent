@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, Optional, TypeVar, overload
+from typing import Any, Callable, TypeVar, overload
 
 from fastagent._context import get_counter, increment_counter
 from fastagent._timeout import call_with_timeout
@@ -19,19 +19,19 @@ def node(fn: F) -> F: ...
 def node(
     *,
     retry: int = 0,
-    timeout: Optional[float] = None,
-    fallback: Optional[Callable[..., Any]] = None,
-    max_iterations: Optional[int] = None,
+    timeout: float | None = None,
+    fallback: Callable[..., Any] | None = None,
+    max_iterations: int | None = None,
 ) -> Callable[[F], F]: ...
 
 
 def node(
-    fn: Optional[F] = None,
+    fn: F | None = None,
     *,
     retry: int = 0,
-    timeout: Optional[float] = None,
-    fallback: Optional[Callable[..., Any]] = None,
-    max_iterations: Optional[int] = None,
+    timeout: float | None = None,
+    fallback: Callable[..., Any] | None = None,
+    max_iterations: int | None = None,
 ) -> Any:
     """Wrap a LangGraph node with production reliability primitives.
 
@@ -60,7 +60,7 @@ def node(
                     raise MaxIterationsExceeded(node_name, max_iterations)
                 increment_counter(node_name)
 
-            last_exc: Optional[BaseException] = None
+            last_exc: BaseException | None = None
             total_attempts = max(1, retry + 1)
 
             for _ in range(total_attempts):

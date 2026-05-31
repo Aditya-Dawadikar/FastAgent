@@ -14,4 +14,4 @@ def call_with_timeout(fn: Callable[..., Any], state: Any, seconds: float, node_n
         try:
             return future.result(timeout=seconds)
         except concurrent.futures.TimeoutError:
-            raise NodeTimeoutError(node_name, seconds)
+            raise NodeTimeoutError(node_name, seconds) from None

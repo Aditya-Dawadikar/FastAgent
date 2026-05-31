@@ -1,6 +1,6 @@
 """Tests for wrap_graph() — uses a lightweight mock instead of a real LangGraph graph."""
 import pytest
-import fastagent
+
 from fastagent import node, wrap_graph
 from fastagent.exceptions import MaxIterationsExceeded
 

@@ -1,4 +1,5 @@
 import pytest
+
 from fastagent import node
 from fastagent.exceptions import AllRetriesExhausted
 

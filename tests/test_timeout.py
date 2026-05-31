@@ -1,7 +1,9 @@
 import time
+
 import pytest
+
 from fastagent import node
-from fastagent.exceptions import NodeTimeoutError
+from fastagent.exceptions import AllRetriesExhausted, NodeTimeoutError
 
 
 def test_timeout_does_not_fire_for_fast_node():
@@ -46,9 +48,11 @@ def test_timeout_combined_with_retry():
         time.sleep(5)
         return {}
 
-    with pytest.raises(Exception):
+    # retry=1 → 2 attempts, both time out → AllRetriesExhausted wrapping NodeTimeoutError
+    with pytest.raises(AllRetriesExhausted) as exc_info:
         fn({})
 
+    assert isinstance(exc_info.value.last_error, NodeTimeoutError)
     assert len(call_times) == 2
 
 
