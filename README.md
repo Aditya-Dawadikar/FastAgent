@@ -1,32 +1,66 @@
 # FastAgent
 
-**Build reliable LangGraph agents without writing reliability code.**
+**Production-ready reliability layer for LangGraph agents.**
 
-FastAgent is a lightweight reliability layer for LangGraph that provides production-ready execution primitives such as retries, fallbacks, timeouts, and loop protection.
-
-Instead of repeatedly implementing error handling and recovery logic inside every node, developers can focus on agent behavior while FastAgent handles common failure scenarios.
+[![CI](https://github.com/Aditya-Dawadikar/FastAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/Aditya-Dawadikar/FastAgent/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/fastagent)](https://pypi.org/project/fastagent/)
+[![Python](https://img.shields.io/pypi/pyversions/fastagent)](https://pypi.org/project/fastagent/)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/Aditya-Dawadikar/FastAgent)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ---
 
-## Why FastAgent?
+Building a LangGraph agent is easy. Keeping it running reliably in production is not.
 
-Building an agent is easy.
+FastAgent adds retries, timeouts, fallbacks, and loop protection to any LangGraph node — with a single decorator. No new graph abstraction. No custom runtime. No DSL.
 
-Keeping an agent running reliably in production is not.
+```python
+@node(retry=3, timeout=10, fallback=backup_planner)
+def planner(state):
+    return llm.invoke(state["messages"])
+```
 
-Common failure modes include:
+---
 
-* LLMs returning malformed outputs
-* Tool execution failures
-* API rate limits
-* Network interruptions
-* Infinite agent loops
-* Long-running or stalled operations
-* Temporary model provider outages
+## Installation
 
-Most LangGraph applications end up reimplementing the same reliability patterns over and over again.
+```bash
+pip install fastagent
+```
 
-FastAgent provides these patterns out of the box.
+Requires Python 3.9+. FastAgent has **zero runtime dependencies** — LangGraph itself is optional.
+
+---
+
+## The problem
+
+Most LangGraph applications end up reimplementing the same failure-handling patterns over and over:
+
+```python
+# Without FastAgent
+def planner(state):
+    for attempt in range(3):
+        try:
+            result = llm.invoke(state["messages"])
+            return result
+        except Exception:
+            if attempt == 2:
+                try:
+                    return backup_llm.invoke(state["messages"])
+                except Exception:
+                    raise
+```
+
+This logic is noisy, easy to get wrong, and has to be repeated in every node.
+
+FastAgent moves it into a decorator:
+
+```python
+# With FastAgent
+@node(retry=3, fallback=backup_planner)
+def planner(state):
+    return llm.invoke(state["messages"])
+```
 
 ---
 
@@ -34,191 +68,167 @@ FastAgent provides these patterns out of the box.
 
 ### Retries
 
-Automatically retry failed node executions.
+Automatically retry a failing node before giving up.
 
 ```python
-@node(
-    retry=3
-)
+@node(retry=3)
 def planner(state):
-    ...
+    return llm.invoke(state["messages"])
 ```
 
----
-
-### Fallbacks
-
-Route execution to backup nodes when primary execution fails.
-
-```python
-@node(
-    fallback=backup_planner
-)
-def planner(state):
-    ...
-```
+`retry=3` means up to **4 total attempts** (1 original + 3 retries). If all attempts fail and no fallback is configured, the original exception is re-raised on a single attempt, or `AllRetriesExhausted` is raised when `retry > 0`.
 
 ---
 
 ### Timeouts
 
-Prevent agents from hanging indefinitely.
+Prevent nodes from hanging indefinitely.
 
 ```python
-@node(
-    timeout=10
-)
+@node(timeout=10)
 def planner(state):
-    ...
+    return llm.invoke(state["messages"])
 ```
+
+Raises `NodeTimeoutError` if execution exceeds the limit. Works on all platforms (implemented via `concurrent.futures`, not `signal.alarm`).
 
 ---
 
-### Loop Protection
+### Fallbacks
 
-Terminate runaway execution paths before they consume excessive resources.
+Route to a backup node when the primary exhausts all retries.
 
 ```python
-@node(
-    max_iterations=5
-)
+def backup_planner(state):
+    return cheap_llm.invoke(state["messages"])
+
+@node(retry=2, fallback=backup_planner)
 def planner(state):
-    ...
+    return expensive_llm.invoke(state["messages"])
 ```
+
+The fallback receives the original state and its return value is used as-is.
 
 ---
 
-## Example
+### Loop protection
 
-Without FastAgent:
+Stop runaway execution paths before they consume excessive resources.
 
 ```python
+@node(max_iterations=5)
 def planner(state):
-    try:
-        result = llm.invoke(...)
-        return result
-    except Exception:
-        try:
-            result = backup_llm.invoke(...)
-            return result
-        except Exception:
-            raise
+    return llm.invoke(state["messages"])
 ```
 
-With FastAgent:
+Raises `MaxIterationsExceeded` when the node is called more than `max_iterations` times within a single graph run. Requires `wrap_graph()` or a manual `new_run_context()` call — see [LangGraph integration](#langgraph-integration) below.
+
+---
+
+### Combining primitives
+
+All parameters compose freely:
 
 ```python
 @node(
-    retry=3,
+    retry=2,
     timeout=10,
-    fallback=backup_planner
+    fallback=backup_planner,
+    max_iterations=5,
 )
 def planner(state):
-    return llm.invoke(...)
+    return llm.invoke(state["messages"])
 ```
 
 ---
 
-## Design Principles
+## LangGraph integration
 
-### Simple
+Wrap your compiled graph with `wrap_graph()` to automatically reset iteration counters between runs:
 
-FastAgent should feel like adding decorators to existing LangGraph nodes.
+```python
+import fastagent
+from langgraph.graph import StateGraph
 
-No new graph abstraction.
+builder = StateGraph(State)
+builder.add_node("planner", planner)
+# ... build your graph ...
 
-No custom runtime.
+graph = fastagent.wrap_graph(builder.compile())
 
-No DSL.
-
----
-
-### Lightweight
-
-FastAgent sits on top of LangGraph.
-
-```text
-Application
-      │
-      ▼
- FastAgent
-      │
-      ▼
- LangGraph
-      │
-      ▼
-  LLMs / Tools
+# Each invoke() gets a fresh execution context
+result = graph.invoke({"messages": [...]})
 ```
 
-Developers continue using LangGraph exactly as they do today.
+`wrap_graph()` patches `invoke`, `stream`, `ainvoke`, and `astream` — whichever the graph supports. If you prefer to manage the context yourself:
+
+```python
+token = fastagent.new_run_context()
+try:
+    result = graph.invoke(state)
+finally:
+    fastagent.reset_run_context(token)
+```
 
 ---
 
-### Reliability First
+## Error reference
 
-FastAgent focuses on production concerns:
+| Exception | Raised when |
+|---|---|
+| `FastAgentError` | Base class for all FastAgent errors |
+| `AllRetriesExhausted` | All retry attempts failed and no fallback is configured (`retry > 0`) |
+| `NodeTimeoutError` | Node execution exceeded the configured `timeout` |
+| `MaxIterationsExceeded` | Node was called more than `max_iterations` times in one run |
 
-* Retry policies
-* Fallback strategies
-* Timeouts
-* Execution safeguards
+All exceptions are importable directly from `fastagent`:
 
-Not:
+```python
+from fastagent import AllRetriesExhausted, NodeTimeoutError, MaxIterationsExceeded
+```
 
-* Memory systems
-* Vector databases
-* Agent orchestration
-* Prompt management
+---
 
-Those problems are already being solved elsewhere.
+## Design principles
+
+**Simple** — FastAgent feels like adding decorators to existing LangGraph nodes. There is no new graph abstraction, no custom runtime, and no DSL.
+
+**Lightweight** — Zero runtime dependencies. FastAgent sits between your application and LangGraph:
+
+```
+Your application
+      │
+      ▼
+  FastAgent
+      │
+      ▼
+  LangGraph
+      │
+      ▼
+ LLMs / Tools
+```
+
+**Focused** — FastAgent handles production reliability concerns: retries, timeouts, fallbacks, and execution guards. Memory systems, vector databases, orchestration, and prompt management are out of scope.
 
 ---
 
 ## Roadmap
 
-### v0.1
-
-* Node retries
-* Fallback execution
-* Timeouts
-* Loop protection
-
-### v0.2
-
-* Exponential backoff
-* Retry policies
-* Conditional fallbacks
-* Failure hooks
-
-### v0.3
-
-* Cost budgets
-* Token budgets
-* Execution guards
-* Circuit breakers
-
-### v0.4
-
-* OpenTelemetry integration
-* Execution traces
-* Metrics export
+| Version | Features |
+|---|---|
+| **v0.1** | Retries, fallbacks, timeouts, loop protection |
+| **v0.2** | Exponential backoff, retry policies, conditional fallbacks, failure hooks |
+| **v0.3** | Cost budgets, token budgets, circuit breakers |
+| **v0.4** | OpenTelemetry integration, execution traces, metrics export |
 
 ---
 
-## Motivation
+## Contributing
 
-React Query simplified data fetching by moving common engineering concerns into a reusable abstraction.
-
-FastAgent aims to do the same for agent reliability.
-
-Instead of spending time writing boilerplate retry loops, fallback handlers, timeout management, and execution guards, developers can focus on building agent workflows.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding conventions, and the release process.
 
 ---
 
-## Status
+## License
 
-🚧 Early Development
-
-FastAgent is currently focused on validating a minimal set of reliability primitives for LangGraph applications.
-
-Feedback and contributions are welcome.
+MIT — see [LICENSE](LICENSE).
