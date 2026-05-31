@@ -24,8 +24,30 @@ def planner(state):
 
 ## Installation
 
+**From PyPI** (once published):
+
 ```bash
 pip install fastagent
+```
+
+**Directly from GitHub** (latest `main`):
+
+```bash
+pip install git+https://github.com/Aditya-Dawadikar/FastAgent.git
+```
+
+**Pin to a specific commit** (recommended for production use before a stable release):
+
+```bash
+pip install git+https://github.com/Aditya-Dawadikar/FastAgent.git@<commit-sha>
+```
+
+**Editable install from a local clone** (for development or making local changes):
+
+```bash
+git clone https://github.com/Aditya-Dawadikar/FastAgent.git
+cd FastAgent
+pip install -e .
 ```
 
 Requires Python 3.9+. FastAgent has **zero runtime dependencies** — LangGraph itself is optional.
